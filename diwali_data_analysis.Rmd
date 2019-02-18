@@ -1,0 +1,193 @@
+---
+title: Independent Study - Spatial Statistics
+author: "Prakkash Manohar, IIIT Sri City"
+date: "Oct 15, 2018"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+**<u><font size=5>LOADING THE DATASET</font></u>**
+
+```{r collapse=TRUE}
+setwd("F:/Logs/S_5 (M-2018)/Spatial Stats - Independent Study/Final Diwali Kriging Assignment")
+rm(list = ls())
+options(scipen = 999)
+library(readxl)
+
+# X1_Anand_Vihar <- read_excel("1_Anand_Vihar.xlsx")
+# X2_Ashok_Vihar <- read_excel("2_Ashok_Vihar.xlsx")
+# X3_Aya_Nagar <- read_excel("3_Aya_Nagar.xlsx")
+# X4_Bawana <- read_excel("4_Bawana.xlsx")
+
+all_files <- as.data.frame(list.files("."), stringsAsFactors = FALSE)
+all_files <- as.data.frame(all_files[-((nrow(all_files)-5):nrow(all_files)),], stringsAsFactors = FALSE)
+all_files_2 <- apply(all_files, 2, function(s) gsub("^.*?_","", s))
+#This regular expression matches the beginning of the string (^), any character (.) repeated zero or more times (*), and underscore (_). The ? makes the match "lazy" so that it only matches are far as the first underscore. That match is replaced with empty string i.e. "".
+all_files_2 <- as.data.frame(apply(all_files_2, 2, function(s) gsub("[.].*$","", s)), stringsAsFactors = FALSE)
+location_names <- all_files_2
+colnames(location_names)[1] <- "Name"
+# for(i in 1:nrow(all_files))
+#   all_files[i,] <- paste0("../", all_files[i,])
+# all_files <- as.data.frame(all_files, stringsAsFactors = FALSE)
+#tmp <- data.frame()
+location <- list()
+for(i in 1:(nrow(all_files))){
+  assign("tmp", read_excel(all_files[i,]))
+  #assign(tmp, paste0("X", i, "_", all_files_2[i,]))
+  tmp <- tmp[,-2]
+  colnames(tmp)[1] = "Date"
+  tmp$Date <- apply(as.data.frame(tmp$Date), 1, function(s) gsub(" .*$","", s))
+  tmp[tmp == 'None'] <- NA
+  # sapply(tmp[2:ncol(tmp)], as.numeric, na.ignore = F)
+  # sapply(tmp[1], as.Date)
+  location <- c(location, list(tmp))
+  #assign(paste0("X", i, "_", all_files_2[i,]), tmp)
+}
+
+for(i in 1:(nrow(all_files))){
+  for(j in 1: ncol(location[[1]])){
+    if(j == 1)
+      #as.Date(as.vector(location[[i]][j]))
+      location[[i]][j] <- lapply(location[[i]][j], as.Date, "%d-%m-%Y")
+    else
+      #as.numeric(location[[i]][,j], na.ignore = F)
+      location[[i]][j] <- lapply(location[[i]][j], as.numeric, na.ignore = F)
+  # sapply(location[[i]][2:ncol(location[[1]])], as.numeric, na.ignore = F)
+  # sapply(location[[i]][1], as.Date)
+  }
+}
+
+aqi <- read_excel("aqi.xlsx")
+aqi <- aqi[,-2]
+colnames(aqi) = c("Date", "Air_Quality", "Index_Value", "Prominent_Pollutants")
+aqi$Date <- apply(as.data.frame(aqi$Date), 1, function(s) gsub(" .*$","", s))
+
+```
+
+
+# VISUALIZATIONS
+```{r collapse = TRUE, warning = FALSE, message = FALSE}
+library(ggplot2)
+library(reshape2)
+
+# AQI Plot
+
+aqi_plot <- ggplot(data=aqi, aes(x=Date, y=Index_Value, group=1)) +
+  geom_line(linetype="dashed") +
+  geom_point() +
+  geom_label(aes(label=paste0("(",Index_Value,", ",Air_Quality,")")), label.size=0, hjust = 0.5, vjust = 1.4)
+print(aqi_plot) +
+  ylab("Index Value")
+
+# Locationwise top 3 pollutants
+
+count <- data.frame()
+for(i in 1:length(location)){
+  avg <- colMeans(location[[i]][-1])
+  for(j in 1:(ncol(location[[i]])-1)){
+    if(is.na(avg[j]))
+      count[i, j] <- 0
+    else
+      count[i, j] <- sum(location[[i]][j+1] >= avg[j])
+  } 
+}
+
+colnames(count) <- colnames(location[[1]])[-1]
+top3pollutants <- head(apply(count, 1, function(x) names(x)[order(-x)]), 3)
+table(top3pollutants)
+
+# overall top 3 pollutants
+
+count <- rbind(count, 0)
+count <- count[-c(1:(nrow(count)-1)),]
+for(i in 1:ncol(count)){
+  count[1,colnames(count)[i]] <- sum(top3pollutants == colnames(count)[i], na.rm = T)
+}
+# gives PM2.5, PM10, CO in decresing order of frequency in top3pollutants data frame
+
+# Locationwise average concentration (over the 8 days) of the top 3 pollutants
+
+avg <- as.data.frame(matrix(0, length(location), 3))
+colnames(avg) <- c("PM2.5", "PM10", "CO")
+for(i in 1:length(location)){
+  avg[i,c(1:3)] <- colMeans(location[[i]][c("PM2.5", "PM10", "CO")], na.rm = T)
+    #ifelse(is.nan(colMeans(location[[i]][c("PM2.5", "PM10", "CO")], na.rm = T)), 0, colMeans(location[[i]][c("PM2.5", "PM10", "CO")], na.rm = T))
+}
+avg <- cbind(rownames(avg), avg)
+colnames(avg)[1] <- "location_id"
+avg2 <- melt(avg, id.vars = c("location_id") , measure.vars = colnames(avg)[-1])
+ggplot(avg2, aes(x = location_id, y = value, group = variable)) +
+  geom_line(aes(color=variable)) +
+  geom_point(aes(color=variable))
+
+# Diwali Effect
+# Day wise Average pollutant concentrations
+location2 <- location
+sum <- 0
+for(i in 1:length(location2)){
+  location2[[i]][-1][is.na(location2[[i]][-1])] <- 0
+  sum <- sum + as.matrix(location2[[i]][-1])
+}
+avg <- sum/length(location)
+
+avg <- cbind(tmp["Date"], avg)
+avg2 <- melt(avg[,c("Date", "PM2.5", "PM10")], id.vars = c("Date") , measure.vars = colnames(avg[,c("PM2.5", "PM10")]))
+avg3 <- melt(avg[,c("Date", "CO", "Black Carbon")], id.vars = "Date" , measure.vars = colnames(avg[,c("CO", "Black Carbon")]))
+avg4 <- melt(avg[,c("Date", "NO", "NO2", "NOx", "Ozone", "SO2", "NH3")], id.vars = c("Date") , measure.vars = colnames(avg[,c("NO", "NO2", "NOx", "Ozone", "SO2", "NH3")]))
+
+ggplot(avg2, aes(x = Date, y = value, group = variable)) +
+  geom_line(aes(color=variable)) +
+  geom_point(aes(color=variable)) +
+  ylab("Concentration Value (microgram per meter cube)")
+
+ggplot(avg3, aes(x = Date, y = value, group = variable)) +
+  geom_line(aes(color=variable)) +
+  geom_point(aes(color=variable)) +
+  ylab("Concentration Value (microgram per meter cube)")
+
+ggplot(avg4, aes(x = Date, y = value, group = variable)) +
+  geom_line(aes(color=variable)) +
+  geom_point(aes(color=variable)) +
+  ylab("Concentration Value (microgram per meter cube)")
+
+# most affected localities for pm2.5 and pm10 (i.e. where the increase in concentration has been the most)
+# increase on 8th Nov as compared to 4th Nov
+
+location2 <- location
+increase <- as.data.frame(matrix(0, length(location2), 2))
+colnames(increase) <- c("PM2.5", "PM10")
+for(i in 1:length(location2)){
+  if(is.na(location2[[i]][5, "PM2.5"]))
+      location2[[i]][5, "PM2.5"] <- location2[[i]][6, "PM2.5"]   
+  if(is.na(location2[[i]][1, "PM2.5"]))
+    location2[[i]][1, "PM2.5"] <- location2[[i]][2, "PM2.5"]
+  if(is.na(location2[[i]][5, "PM10"]))
+    location2[[i]][5, "PM10"] <- location2[[i]][6, "PM10"]
+  if(is.na(location2[[i]][1, "PM10"]))
+    location2[[i]][1, "PM10"] <- location2[[i]][2, "PM10"]
+  
+  increase[i, 1] <- location2[[i]][5, "PM2.5"] - location2[[i]][1, "PM2.5"] 
+  increase[i, 2] <- location2[[i]][5, "PM10"] - location2[[i]][1, "PM10"] 
+}
+
+# top 3 increase values for pm2.5 and pm10
+top3localities <- as.data.frame(lapply(apply(increase, 2, function(x) sort(x, decreasing = T)), head, 3))
+
+top3localities <- head(apply(increase, 2, function(x) order(x, decreasing = T)), 3)
+localities <- as.data.frame(location_names[,1], stringsAsFactors = F)
+top3localities[,1] <- localities[top3localities[,1], 1]
+top3localities[,2] <- localities[top3localities[,2], 1]
+
+rm(location2)
+
+increase <- cbind("location" = location_names[,1], increase)
+inc <- melt(increase, id.vars = c("location") , measure.vars = colnames(increase)[-1])
+
+ggplot(data = inc, aes(x = location, y = value, fill = variable)) +
+  geom_bar(stat="identity", position=position_dodge(), colour="black") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  ylab("Increase in Concentration Value (microgram per meter cube)")
+
+```
