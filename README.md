@@ -5,3 +5,5 @@
 - Interpolation: Estimating unknown data point (values) with the help of already known data points.
 - Kriging: A type of interpolation originated from and generally used in geoscience.
 - Using Kriging on a Delhi Air Pollution dataset to predict estimate pollutant concentration values.
+
+## Refer to the presentation for the analysis.
