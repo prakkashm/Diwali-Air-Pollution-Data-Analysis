@@ -1,0 +1,321 @@
+---
+title: Independent Study - Spatial Statistics
+author: "Prakkash Manohar, IIIT Sri City"
+date: "Oct 15, 2018"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
+---
+**<u><font size=5>LOADING THE DATASET</font></u>**
+```{r}
+#  D I W A L I    D A T A S E T  - - - - - - - - - - - - - - - - - - - - - - - - -
+setwd("F:/Logs/S_6 (S-2019)/Honors/Evaluation-1")
+rm(list = ls())
+options(scipen = 999)
+library(readxl)
+library(geoR)
+library(ggplot2)
+library(pracma)
+library(RandomFields)
+library(xlsx)
+
+source('F:/Logs/S_6 (S-2019)/Honors/Evaluation-1/vario.r')
+source('F:/Logs/S_6 (S-2019)/Honors/Evaluation-1/varifit.r')
+
+data3 <- read_excel("data3.xlsx")
+# X11()
+# plot(data3$X, data3$Y)
+# # set.seed(123)
+# # tmpindex <- sample(1:nrow(data3), .3*nrow(data3))
+# tmpindex <- identify(data3$X, data3$Y)
+data3 <- cbind(data3[2], data3[1], data3[3:ncol(data3)])
+tmpindex <- c(4,9,13,14,18,24,27,30)
+predict_data <- data3[tmpindex,]
+data3 <- data3[-tmpindex,]
+
+i <- 0
+hvalues <- c(0, 0, 0.013, 0.0067, 0.028, 0.02, 0.026, 0.019, 0.023, 0.016)
+
+for(i in 3:ncol(data3)){
+  data <- data.frame(data3[1], data3[2], data3[i])
+  geodata1 <- as.geodata(data, coords.col = 1:2, data.col = 3)
+  ideal_variogram_1 <- variog(geodata1, coords = geodata1$coords, data = geodata1$data, option = "bin", uvec = seq(0, 0.45, by = hvalues[i]), direction = 0, tolerance = pi/4)
+  df <- data.frame(u = ideal_variogram_1$u, v = ideal_variogram_1$v)
+  plot(df$u, df$v, main = "Using variog()")
+  abline(h = var(na.omit(data[,3])), col="blue")
+  #filename <- paste("df", i, ".xlsx", sep = "")
+  #write.xlsx(df, filename)
+}
+
+# for(i in seq(0.001, 0.04, by = 0.001)){           # seq(0.001, 0.04, by = 0.001)               0.01, by = 0.0001 
+#   ideal_variogram_1 <- variog(geodata1, coords = geodata1$coords, data = geodata1$data, option = "bin", uvec = seq(0, 0.45, by = i), direction = 0, tolerance = pi/4)
+#   df <- data.frame(u = ideal_variogram_1$u, v = ideal_variogram_1$v)
+# 
+#   plot(df$u, df$v, main = i)
+#   abline(h = var(data[,3]), col="blue")
+# }
+  
+```
+
+```{r}
+
+# choosing spherical variogram parameters by ordinary least squares (OLS)
+
+# min <- Inf
+# for(c0 in seq(0, by = 0.001, 0.06)){
+#   for(sill in seq(0.05, by = 0.001, 0.1)){
+#     for(a in seq(50, by = 5, 300)){
+#       idealvariogram <- varifit(c0, sill, a, 1, ideal_variogram_2$lag)
+#       tmp <- (idealvariogram - ideal_variogram_2$gamma)^2
+#       rmse <- sqrt(mean(na.omit(tmp[1:117])))
+#       if(rmse < min)
+#         min <- rmse
+#         bestpar <- c(c0, sill, a)
+#       }
+#     }
+#   }
+
+# 3:    [650;1050;0.150000000000000]
+# 4:    [1000;7100;0.100000000000000]
+# 5:    [250;1350;0.208000000000000]
+# 6:    [1300;3100;0.141000000000000]
+# 7:    [5500;7700;0.200000000000000]
+# 8:    [1000;3300;0.173000000000000]
+# 9:    [788.37;4200;0.224000000000000]
+# 10:   [2550;8400;0.075000000000000]
+
+dist <- pairdist(data3$X, data3$Y, na.ignore = T)
+
+j <- 3    # COLUMN NUMBER
+predict_data_tmp <- data.frame(predict_data[, 1], predict_data[, 2], predict_data[, j])
+
+bestpar <- c(650, 1050, 0.15)        # found from the matlab program
+
+c0 <- bestpar[1]
+c1 <- bestpar[2] - c0
+a <- bestpar[3]
+
+data <- data.frame(data3[1], data3[2], data3[j])
+geodata1 <- as.geodata(data, coords.col = 1:2, data.col = 3)
+ideal_variogram_1 <- variog(geodata1, coords = geodata1$coords, data = geodata1$data, option = "bin", uvec = seq(0, 0.45, by = hvalues[j]), direction = 0, tolerance = pi/4)
+df <- data.frame(u = ideal_variogram_1$u, v = ideal_variogram_1$v)
+
+tmp <- varifit(c0, c0+c1, a, 1, df$u)
+fit <- data.frame("u" = df$u, "v" = tmp)
+
+ggplot(df, aes(x = u, y = v)) +
+  geom_point(shape = 3, size = 2, colour = "black") +
+  ggtitle("Variogram for PM2.5 data") +
+  labs(x = "Distance", y = "Semivariance/Moment of inertia")
+
+ggplot() +
+  geom_point(data = df, mapping = aes(x = u, y = v), col = "black") +
+  geom_line(data = fit, mapping = aes(x = u, y = v), shape = 16, colour = "red", linetype="solid") +
+  ggtitle("Fitted Spherical Variogram") +
+  labs(x = "Distance", y = "Semivariance/Moment of inertia")
+
+# predicted_data$Predicted_PM2.5 <- kriging(as.matrix(data3[,c(1:2)]), data3[,3], as.matrix(predicted_data[,c(1:2)]), type = "ordinary")
+# my_RMSE<-caret::RMSE(predicted_data$Predicted_PM2.5, predicted_data$PM2.5)
+
+#predicted_data$Predicted_PM2.5 <- Kriging(krige.method = "O", x = data3[,1], y = data[,2], model = "spherical")
+
+# # KRIGING (for calculating error metrics)
+# 
+# covariance1 <- ifelse(dist > a, 0, c1*(1 -(1.5*abs(dist)/a)+(0.5*(abs(dist)/a)^3)))
+# 
+# covariance1 <- cbind(covariance1, rep(1, nrow(covariance1)))
+# covariance1 <- rbind(covariance1, rep(1, ncol(covariance1)))
+# covariance1[nrow(covariance1), ncol(covariance1)] <- 0
+# 
+# covinverse <- inv(covariance1)       #finds inverse of the matrix
+# 
+# dist2 <- proxy::dist(predict_data[1:2], data3[1:2])
+# 
+# covariance2 <- ifelse(dist2 > a, 0, c1*(1 -(1.5*abs(dist2)/a)+(0.5*(abs(dist2)/a)^3)))
+# # covariance2 <- rbind(covariance2, 1)
+# 
+# data4 <- t(rbind(data3[3], 0))
+# d <- t(as.matrix(covariance2))
+# d <- rbind(d, 1)
+# w <- covinverse %*% d
+# predicted_data["Predicted_PM2.5_Kriging"] <- as.vector(data4 %*% w)
+# predicted_data["Predicted_PM2.5_Kriging"] <- sapply(predicted_data["Predicted_PM2.5_Kriging"], function(x) ifelse(x < 0, 0, round(x, 2)))
+# #print(w)
+
+
+```
+
+```{r}
+library(phylin)
+#library(spatstat)
+#library(gstat)
+
+# PREDICTING FOR THE ENTIRE GRID USING KRIGING
+
+x.range <- as.numeric(c(round(min(data3$X), 2), round(max(data3$X), 2)))  # min/max longitude of the interpolation area
+y.range <- as.numeric(c(round(min(data3$Y), 2), round(max(data3$Y), 2)))  # min/max latitude of the interpolation area
+
+# GRID
+# from the range, exapnd the coordinates to make a regular grid
+grd <- expand.grid(x = seq(from = x.range[1], to = x.range[2], by = 0.001), y = seq(from = y.range[1], to = y.range[2], by = 0.001))
+library(raster)
+library(rgdal)
+library(rgeos)
+library(ggplot2)
+library(dplyr)
+
+### Q1: Delhi only
+
+### Get data
+india <- getData("GADM", country = "India", level = 1)
+
+### Choose Delhi
+delhi <- subset(india, NAME_1 == "NCT of Delhi")
+
+### SPDF to DF
+delhiline <- fortify(delhi)
+
+grid <- makegrid(delhi, cellsize = 0.001) # cellsize in map units!
+grid <- SpatialPoints(grid, proj4string = CRS(proj4string(delhi)))
+
+grid <- grid[delhi, ]
+grid <- as.data.frame(grid)
+
+bestpar_matrix <- matrix(c(650, 1050, 0.15, 1000, 7100, 0.1, 250, 1350, 0.208, 1300, 3100, 0.141, 5500, 7700, 0.2, 1000, 3300, 0.173, 788.37, 4200, 0.224, 2550, 8400, 0.075), nrow = 8, ncol = 3, byrow = TRUE)
+
+# KRIGING
+
+dist <- pairdist(data3$X, data3$Y, na.ignore = T)
+
+# min <- +Inf
+# max <- -Inf
+
+for(i in 1:8){
+  j <- i+2
+  a <- bestpar_matrix[i, 3]
+  c0 <- bestpar_matrix[i, 1]
+  c1 <- bestpar_matrix[i, 2] - c0
+  
+
+  covariance1 <- ifelse(dist > a, 0, c1*(1 -(1.5*abs(dist)/a)+(0.5*(abs(dist)/a)^3)))
+
+  covariance1 <- cbind(covariance1, rep(1, nrow(covariance1)))
+  covariance1 <- rbind(covariance1, rep(1, ncol(covariance1)))
+  covariance1[nrow(covariance1), ncol(covariance1)] <- 0
+
+  covinverse <- inv(covariance1)       #finds inverse of the matrix
+
+  #dist23 <- proxy::dist(data3[1:2], grid[1:2])
+  dist2 <- fields::rdist(data3[1:2], grid[1:2])
+
+  covariance2 <- ifelse(dist2 > a, 0, c1*(1 -(1.5*abs(dist2)/a)+(0.5*(abs(dist2)/a)^3)))
+  # covariance2 <- rbind(covariance2, 1)
+
+  data4 <- t(rbind(data3[j], 0))
+  data4[is.na(data4)] <- 0
+  d <- rbind(covariance2, 1)
+  w <- covinverse %*% d
+  predicted_data_2 <- data4 %*% w
+  predicted_data_2 <- sapply(predicted_data_2, function(x) ifelse(x < 0, 0, round(x, 2)))
+  #print(w)
+
+  kriging.output <- data.frame(as.vector(grid$x1), as.vector(grid$x2), predicted_data_2)
+  colnames(kriging.output) <- c("grd.x", "grd.y", "PM2.5")
+
+  # IDW
+
+  # predicted_data <- cbind(predict_data[,c(1,2,j)], "Predicted_PM2.5_Kriging" = 0)
+  # predicted_data["Predicted_PM2.5_IDW"] <- round(phylin::idw(data3[,j], data3[,c(1,2)], predict_data[,c(1,2)]), 2)
+
+  interpolated <- phylin::idw(data3[,j], data3[,c(1,2)], grid)
+  idw.output <- data.frame(as.vector(grid$x1), as.vector(grid$x2), as.vector(interpolated))
+  colnames(idw.output) <- c("grd.x", "grd.y", "PM2.5")
+  
+  # if(min > min(kriging.output$PM2.5))
+  #   min <- min(kriging.output$PM2.5)
+  # if(min > min(idw.output$PM2.5))
+  #   min <- min(idw.output$PM2.5)
+  # 
+  # if(max < max(kriging.output$PM2.5))
+  #   max <- max(kriging.output$PM2.5)
+  # if(max < max(idw.output$PM2.5))
+  #   max <- max(idw.output$PM2.5)
+
+  min_value_row <- c(kriging.output[nrow(kriging.output),1], kriging.output[nrow(kriging.output),2]+0.001, min)
+  max_value_row <- c(kriging.output[nrow(kriging.output),1]+0.001, kriging.output[nrow(kriging.output),2], max)
+  kriging.output <- rbind(kriging.output, min_value_row, max_value_row)
+
+  min_value_row <- c(idw.output[nrow(idw.output),1], idw.output[nrow(idw.output),2]+0.001, min)
+  max_value_row <- c(idw.output[nrow(idw.output),1]+0.001, idw.output[nrow(idw.output),2], max)
+  idw.output <- rbind(idw.output, min_value_row, max_value_row)
+
+  ti <- paste("Kriging")
+  print(ggplot() +
+    geom_tile(data = kriging.output, aes(x = grd.x, y = grd.y, fill = PM2.5)) +
+    geom_point(data = data3, aes(x = X, y = Y), shape = 19, color = "black") +
+    geom_point(data = predict_data, aes(x = X, y = Y), shape = 19, color = "black") +
+    scale_fill_distiller(palette = "Spectral", direction = -1) +
+    theme_bw() +
+
+    labs(title = ti))
+  
+  ti <- paste("IDW")
+  print(ggplot() +
+    geom_tile(data = idw.output, aes(x = grd.x, y = grd.y, fill = PM2.5)) +
+    geom_point(data = data3, aes(x = X, y = Y), shape = 19, color = "black") +
+    geom_point(data = predict_data, aes(x = X, y = Y), shape = 19, color = "black") +
+    scale_fill_distiller(palette = "Spectral", direction = -1) +
+    theme_bw() +
+
+    labs(title = ti))
+}
+
+# Palettes
+# Diverging - BrBG, PiYG, PRGn, PuOr, RdBu, RdGy, RdYlBu, RdYlGn, Spectral
+# Qualitative - Accent, Dark2, Paired, Pastel1, Pastel2, Set1, Set2, Set3
+# Sequential - Blues, BuGn, BuPu, GnBu, Greens, Greys, Oranges, OrRd, PuBu, PuBuGn, PuRd, Purples, RdPu, Reds, YlGn, YlGnBu, YlOrBr, YlOrRd
+```
+
+<font size = 5>**There are many things which can be observed/inferred from the above variogram, in general:**<br>
+<ol><li> The moment of inertia/semivariance is less for low distance, which is understandable as there will be many data points close to each other (for low distances).
+
+<li> Theoretically, as distance increases, data points drift away from the line _x=y_ on an h-scatterplot so the cloud of data points will get fatter and MOI increases. This can be verified from this variogram. As the distance increases, the MOI also increases (roughly).</ol></font>
+
+```{r}
+# ERROR METRICS
+library(ModelMetrics)
+library(MLmetrics)
+mae1 <- mae(predicted_data$PM2.5, predicted_data$Predicted_PM2.5_Kriging)
+mae2 <- mae(predicted_data$PM2.5, predicted_data$Predicted_PM2.5_IDW)
+
+my_RMSE_1 <- caret::RMSE(predicted_data$Predicted_PM2.5_Kriging, predicted_data$PM2.5)
+my_RMSE_2 <- caret::RMSE(predicted_data$Predicted_PM2.5_IDW, predicted_data$PM2.5)
+
+mape1 <- MAPE(predicted_data$Predicted_PM2.5_Kriging, predicted_data$PM2.5)
+mape2 <- MAPE(predicted_data$Predicted_PM2.5_IDW, predicted_data$PM2.5)
+
+df1 <- data.frame("Ordinary Kriging" = c(mae1, my_RMSE_1, mape1), "IDW Interpolation" = c(mae2, my_RMSE_2, mape2))
+colnames(df1) <- c("Ordinary Kriging", "IDW Interpolation")
+rownames(df1) <- c("Mean Absolute Error (MAE)", "Root Mean Square Error (RMSE)", "Mean Absolute Percentage Error (MAPE)")
+
+df1 <- round(df1, 2)
+
+df1[3,] <- lapply(df1[3,], function(x) paste(as.numeric(x)*100, "%", sep = ""))
+
+```
+
+```{r echo = FALSE, warning = FALSE}
+library(knitr)
+library(kableExtra)
+options(knitr.table.format = "html")
+kable(df1, align="c", "html") %>%
+kable_styling("striped",full_width = F) %>%
+row_spec(1, color = "black", background = "#ffe6e6") %>%
+row_spec(2, color = "black", background = "#ffff99") %>%
+row_spec(3, color = "black", background = "#ffe6e6") %>%
+column_spec(1, bold = T, border_right = T) %>%
+column_spec(2, border_right = T)
+
+```
